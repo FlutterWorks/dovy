@@ -1,6 +1,8 @@
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:dovy/general.dart';
 
-class StationsScreen extends StatefulWidget {
+class StationsScreen extends StatefulHookWidget {
   const StationsScreen({
     Key key,
   }) : super(key: key);
@@ -15,87 +17,95 @@ class _StationsScreenState extends State<StationsScreen>
   Widget build(BuildContext context) {
     super.build(context);
 
-    return MapStateBuilder(
-      builder: (context, select, systemsList, linesList, s) {
-        final systems = mapKeysFromList(systemsList, (k) => k["id"]);
-        final system = systems[select.system];
-        final name = system["name"];
+    final select = useProvider(selectProvider).state;
+    final systemsList = useProvider(systemsProvider)?.data?.value;
+    final lines = useProvider(linesProvider)?.data?.value;
 
-        final stations = uniqBy(
-          linesList
-              .map((line) => line["stations"])
-              .toList()
-              .expand((element) => element)
-              .toList(),
-          (s) => s["id"],
-        );
+    if (systemsList == null || lines == null) {
+      return Center(
+        child: SpinKitFadingFour(
+          color: Colors.white,
+        ),
+      );
+    }
 
-        final linesBy = mapKeysFromList(linesList, (s) => s["id"]);
+    final systems = mapKeysFromList(systemsList, (System k) => k.id);
+    final system = systems[select.system];
+    final name = system?.name;
 
-        return CustomScrollView(
-          slivers: <Widget>[
-            SliverAppBar(
-              title: Text("$name - Stations"),
-              actions: <Widget>[
-                IconButton(
-                  icon: Icon(Icons.settings),
-                  onPressed: () {
-                    final message = Flushbar(
-                      title: "Options",
-                      messageText: SelectSystem(),
-                      margin: EdgeInsets.all(10),
-                      borderRadius: 20,
-                    );
-                    context.show(message);
-                  },
-                )
-              ],
-            ),
-            SliverPadding(
-              padding: EdgeInsets.all(20),
-              sliver: SliverList(
-                delegate: SliverChildBuilderDelegate(
-                  (context, i) {
-                    final station = stations[i];
-                    final name = station["name"];
-                    final lines = station["lines"]
-                        .map((p) => p["id"])
-                        .map((id) => linesBy[id])
-                        .toList();
-                    return Row(
-                      children: <Widget>[
-                        Row(
-                          children: <Widget>[
-                            for (final line in lines)
-                              Padding(
-                                padding: const EdgeInsets.only(right: 10),
-                                child: Builder(builder: (context) {
-                                  final color =
-                                      (line["color"] as String).toColor();
-                                  return Chip(
-                                    backgroundColor: color,
-                                    label: Text(
-                                      line["name"],
-                                      style: TextStyle(
-                                        color: color.inverseBW,
-                                      ),
-                                    ),
-                                  );
-                                }),
-                              ),
-                          ],
-                        ),
-                        Text(name),
-                      ],
-                    );
-                  },
-                  childCount: stations.length,
-                ),
-              ),
-            )
+    // TODO
+    final stations = uniqBy(
+      lines
+          .map((line) => line.stations)
+          .toList()
+          .expand((element) => element)
+          .toList(),
+      (Station s) => s.id,
+    );
+
+    final linesBy = mapKeysFromList(lines, (Line l) => l.id);
+
+    return CustomScrollView(
+      slivers: <Widget>[
+        SliverAppBar(
+          title: Text("$name - Stations"),
+          actions: <Widget>[
+            // TODO
           ],
-        );
-      },
+        ),
+        SliverList(
+          delegate: SliverChildBuilderDelegate(
+            (context, i) {
+              final station = stations[i];
+              final name = station.name;
+              final lines = station.lines
+                  .map((p) => p.id)
+                  .map((id) => linesBy[id])
+                  .toList();
+              return InkWell(
+                onTap: () {
+                  context.navigateTo(
+                    '/station/${station.id}',
+                  );
+                },
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: kIsWeb ? 10 : 0,
+                  ),
+                  child: Row(
+                    children: <Widget>[
+                      Row(
+                        children: <Widget>[
+                          for (final line in lines)
+                            Padding(
+                              padding: const EdgeInsets.only(right: 10),
+                              child: Builder(builder: (context) {
+                                final color =
+                                    getColor(line?.color) ?? Colors.white;
+                                return Chip(
+                                  backgroundColor: color,
+                                  label: Text(
+                                    line.name,
+                                    style: TextStyle(
+                                      color: color.inverseBW,
+                                    ),
+                                  ),
+                                );
+                              }),
+                            ),
+                        ],
+                      ),
+                      Text(name),
+                    ],
+                  ),
+                ),
+              );
+            },
+            childCount: stations.length,
+          ),
+        )
+      ],
     );
   }
 

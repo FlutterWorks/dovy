@@ -1,5 +1,6 @@
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:dovy/general.dart';
-import 'package:dovy/hooks/graphql.dart';
 
 class Mapa extends HookWidget {
   const Mapa({
@@ -9,31 +10,36 @@ class Mapa extends HookWidget {
   @override
   Widget build(BuildContext context) {
     final hookContext = useContext();
-    final snapshot = useMemoizedFuture(context.i<CmsService>().configs);
-    final select = useBloc<SystemSelectCubit>();
-    final systemsList = useBloc<SystemsListCubit>();
+    final select = useProvider(selectProvider);
+    final systems = useProvider(systemsProvider);
+    final lines = useProvider(linesProvider)?.data?.value ?? [];
+    final stations = useProvider(stationsProvider)?.data?.value ?? [];
+    final options = useProvider(configsProvider).data?.value;
+    final mapController = useProvider(mapControllerProvider);
 
     useEffect(() {
       final system = select.state.system;
       if (system == null) {
-        systemsList.loadSystems().then((list) {
-          // First Load
-          select.selectSystem(list[0]["id"]);
+        // First Load
+        Future.microtask(() {
+          final item = systems?.data?.value;
+          if (item != null) {
+            select.state = select.state.setSystem(item[0].id);
+          }
         });
       }
 
       return () {};
-    }, [select.state.system]);
+    }, [select.state.system, systems.data?.value]);
 
-    if (snapshot.data == null) {
+    if (options == null) {
       return Center(
-        child: CircularProgressIndicator(),
+        child: SpinKitFadingFour(
+          color: Colors.white,
+        ),
       );
     }
 
-    final mapController = MapController();
-
-    final options = snapshot.data;
     final String mapTileUrl = options['map_tile_url'];
     final List<String> mapTileSubdomains = List.from(
       options['map_tile_subdomains'],
@@ -49,108 +55,29 @@ class Mapa extends HookWidget {
 
     final double mapTileZoom = options['map_tile_zoom'].toDouble();
 
-    return MapStateBuilder(
-        builder: (context, select, systemsList, linesList, stationsList) {
-      // print(
-      //     "$select: systems: ${systemsList.length}, lines: ${linesList.length}, stations: ${stationsList.length}");
+    return Consumer(
+      builder: (context, watch, child) {
+        final position = watch(positionProvider);
 
-      final systems = mapKeysFromList(systemsList, (s) => s['id']);
-      final lines = mapKeysFromList(linesList, (s) => s['id']);
-      // final stations = mapKeysFromList(stationsList, (s) => s['id']);
-
-      final system = systems[select.system];
-      // final line = lines[select.line];
-      // final station = stations[select.station];
-
-      final polylines = <Polyline>[];
-      final markers = <Marker>[];
-
-      if (system != null) {
-        system["lines"].forEach((payload) {
-          final id = payload["id"];
-          if (id == null) {
-            return;
-          }
-          final line = lines[id];
-          if (line == null) {
-            return;
-          }
-
-          if (select.line != null && select.line != id) {
-            return;
-          }
-
-          final points = (line["shape"] as String)?.toLatLngList() ?? [];
-          //TODO
-          // if (points.isEmpty) {
-          //   return;
-          // }
-          final polyline = Polyline(
-            points: points,
-            color: (line["color"] as String).toColor(),
-            strokeWidth: 2,
-          );
-          polylines.add(polyline);
-
-          final stations = line["stations"];
-
-          stations.forEach((station) {
-            final id = station["id"] as String;
-            if (select.station != null && select.station != id) {
-              return;
-            }
-
-            final location = station["location"];
-            if (location == null) {
-              return;
-            }
-            final latitude = location["latitude"];
-            final longitude = location["longitude"];
-
-            if (latitude == null || longitude == null) {
-              return;
-            }
-
-            final point = LatLng(latitude, longitude);
-
-            final List stationLines = station["lines"]
-                .map((payload) => payload["id"])
-                .map((id) => lines[id])
-                .toList();
-            final colors = stationLines
-                .map((p) => p["color"])
-                .map((e) => (e.toString().toColor()))
-                .toList();
-
-            final marker = Marker(
-              point: point,
-              builder: (context) => DonutColors(
-                colors: colors,
-                radius: 5,
-                centerRatio: 0.1,
-                onTap: () => clickStation(hookContext, station, stationLines),
-              ),
-            );
-
-            markers.add(marker);
-          });
-        });
-      }
-
-      return BlocBuilder<PositionCubit, MapPosition>(
-          builder: (context, mapPosition) {
         return FlutterMap(
           mapController: mapController,
           options: MapOptions(
-              center: mapTileCenter,
-              zoom: mapTileZoom,
-              maxZoom: 18.49,
-              minZoom: 2,
-              onPositionChanged: (position, _) =>
-                  context.bloc<PositionCubit>().change(position),
-              onTap: (l) {
-                clickPlace(context, l);
-              }),
+            center: mapTileCenter,
+            zoom: mapTileZoom,
+            maxZoom: 18.49,
+            minZoom: 2,
+            onPositionChanged: (newPosition, _) {
+              Future.microtask(() {
+                position.state = newPosition;
+              });
+            },
+            plugins: [
+              TappablePolylineMapPlugin(),
+            ],
+            onLongPress: (l) {
+              clickPlace(context, l);
+            },
+          ),
           layers: [
             TileLayerOptions(
               urlTemplate: mapTileUrl,
@@ -158,79 +85,99 @@ class Mapa extends HookWidget {
               additionalOptions: mapTileAdditionalOptions,
               backgroundColor: context.theme.scaffoldBackgroundColor,
             ),
-            PolylineLayerOptions(
-              polylines: polylines,
-            ),
+            if (!kIsWeb)
+              TappablePolylineLayerOptions(
+                polylineCulling: true,
+                polylines: [
+                  for (final line in lines)
+                    TaggedPolyline(
+                      tag: line.id,
+                      points: line?.points,
+                      color: getColor(line?.color),
+                      strokeWidth: 2.0,
+                    ),
+                ],
+                onTap: (TaggedPolyline polyline) =>
+                    clickLine(context, polyline.tag),
+                onMiss: () {},
+              ),
+            if (kIsWeb)
+              PolylineLayerOptions(
+                // polylineCulling: true,
+                polylines: [
+                  for (final line in lines)
+                    Polyline(
+                      points: line?.points,
+                      color: getColor(line?.color),
+                      strokeWidth: 2.0,
+                    ),
+                ],
+              ),
             MarkerLayerOptions(
-              markers: markers,
+              markers: [
+                for (final station in stations)
+                  if (station.id == select.state.station ||
+                      select.state.station == null)
+                    Marker(
+                      height: 18,
+                      width: 18,
+                      point: station.location,
+                      builder: (context) => Material(
+                        color: Colors.black,
+                        borderRadius: BorderRadius.circular(18),
+                        child: InkWell(
+                          onTap: () => clickStation(hookContext, station),
+                          child: CircleDonut(
+                            colors: [
+                              for (final line in station.lines)
+                                getColor(line.color),
+                            ],
+                            thickness: 4,
+                          ),
+                        ),
+                      ),
+                    ),
+              ],
             ),
           ],
         );
-      });
-    });
+      },
+    );
   }
 }
 
-void clickStation(BuildContext context, station, List lines) {
-  Flushbar msg;
-  msg = Flushbar(
-    margin: EdgeInsets.all(10),
-    borderRadius: 10,
-    titleText: Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: <Widget>[
-        Text(
-          station["name"],
-        ),
-        IconButton(
-          icon: Icon(Icons.close),
-          onPressed: () {
-            msg.dismiss();
-          },
-        ),
-      ],
-    ),
-    messageText: Row(
-      children: lines.map(
-        (l) {
-          final color = (l["color"] as String).toColor();
-          return Padding(
-            padding: EdgeInsets.only(right: 10),
-            child: Chip(
-              label: Text(
-                l["name"],
-                style: TextStyle(
-                  color: color.inverseBW,
-                ),
-              ),
-              backgroundColor: color,
-            ),
-          );
-        },
-      ).toList(),
-    ),
+void clickStation(BuildContext context, Station station) {
+  showFlash(
+    context: context,
+    builder: (context, controller) {
+      return StationCard(
+        controller: controller,
+        stationId: station.id,
+      );
+    },
   );
-  context.show(msg);
+}
+
+void clickLine(BuildContext context, String lineId) {
+  showFlash(
+    context: context,
+    builder: (context, controller) {
+      return LineCard(
+        controller: controller,
+        lineId: lineId,
+      );
+    },
+  );
 }
 
 void clickPlace(BuildContext context, LatLng point) {
-  Flushbar msg;
-  msg = Flushbar(
-    margin: EdgeInsets.all(10).copyWith(bottom: 120),
-    borderRadius: 10,
-    icon: Icon(Icons.info_outline),
-    messageText: FutureBuilder<Map<String, dynamic>>(
-      future: LocationService.getLocation(point),
-      builder: (context, snapshot) {
-        return Row(children: [
-          if (snapshot.connectionState == ConnectionState.done)
-            Expanded(child: Text(snapshot.data["display_name"]))
-          else
-            Expanded(child: Center(child: CircularProgressIndicator()))
-        ]);
-      },
-    ),
+  showFlash(
+    context: context,
+    builder: (context, controller) {
+      return PlaceCard(
+        controller: controller,
+        point: point,
+      );
+    },
   );
-
-  context.show(msg);
 }

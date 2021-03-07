@@ -1,13 +1,12 @@
+import 'package:flutter/material.dart';
 import 'package:dovy/general.dart';
-import 'package:google_polyline_algorithm/google_polyline_algorithm.dart';
+import 'package:maps_toolkit/maps_toolkit.dart' hide LatLng;
 
 extension BuildContext_ on BuildContext {
   S get s => S.of(this);
   ThemeData get theme => Theme.of(this);
   MediaQueryData get media => MediaQuery.of(this);
   NavigatorState get navigator => Navigator.of(this);
-  GetIt get i => GetIt.I;
-  FluroRouter get router => GetIt.I<FluroRouter>();
   Future navigateTo(
     String path, {
     bool replace = false,
@@ -16,21 +15,15 @@ extension BuildContext_ on BuildContext {
     Duration transitionDuration = const Duration(milliseconds: 250),
     RouteTransitionsBuilder transitionBuilder,
   }) =>
-      GetIt.I<FluroRouter>().navigateTo(
-        this,
-        path,
-        replace: replace,
-        clearStack: clearStack,
-        transition: transition,
-        transitionDuration: transitionDuration,
-        transitionBuilder: transitionBuilder,
-      );
-  Future<T> show<T>(Flushbar<T> flushbar) => flushbar.show(this);
-  GraphQLClient get graphql => GraphQLProvider.of(this).value;
-}
-
-extension FormBuilder_ on ValueNotifier<GlobalKey<FormBuilderState>> {
-  FormBuilderState get form => this.value.currentState;
+      this.read(routerProvider).navigateTo(
+            this,
+            path,
+            replace: replace,
+            clearStack: clearStack,
+            transition: transition,
+            transitionDuration: transitionDuration,
+            transitionBuilder: transitionBuilder,
+          );
 }
 
 extension Future_<T> on Future<T> {
@@ -123,21 +116,19 @@ extension MapPosition_ on MapPosition {
 }
 
 extension PolylineDecode_ on String {
-  List<LatLng> toLatLngList({int accuracyExponent = 5}) {
-    try {
-      return decodePolyline(
-        this,
-        accuracyExponent: accuracyExponent,
-      )
-          .map(
-            (p) => LatLng(
-              p.first,
-              p.last,
-            ),
-          )
-          .toList();
-    } catch (e) {
-      return [];
-    }
+  List<LatLng> toLatLngList() {
+    return decodeEncodedPolyline(this);
   }
+}
+
+extension AsyncValueLoadingt_<T> on AsyncValue<T> {
+  bool get loading => this.when(
+        data: (_) => false,
+        loading: () => true,
+        error: (_, _st) => false,
+      );
+}
+
+extension MapController_ on MapController {
+  zoomBy([factor = 1]) => this.move(center, zoom + factor);
 }

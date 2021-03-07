@@ -1,7 +1,9 @@
-import 'package:dovy/general.dart';
-import 'package:dovy/hooks/graphql.dart';
+import 'dart:math';
 
-class ProfileScreen extends StatefulWidget {
+import 'package:flutter/material.dart';
+import 'package:dovy/general.dart' hide Path;
+
+class ProfileScreen extends StatefulHookWidget {
   const ProfileScreen({
     Key key,
   }) : super(key: key);
@@ -16,14 +18,37 @@ class _ProfileScreenState extends State<ProfileScreen>
   Widget build(BuildContext context) {
     super.build(context);
 
-    return CustomScrollView(
-      slivers: <Widget>[
-        SliverAppBar(
-          title: Text('Profile'),
+    final loaded = useProvider(loadedProvider);
+    final token = useProvider(authTokenProvider);
+    final user = useProvider(userProvider)?.data?.value;
+
+    if (!loaded) {
+      return Center(
+        child: SpinKitRing(
+          color: Colors.white,
         ),
-        SliverToBoxAdapter(child: ProfileHook()),
-      ],
-    );
+      );
+    } else if (loaded && user != null) {
+      return CustomScrollView(
+        slivers: <Widget>[
+          SliverAppBar(
+            title: Text('Profile'),
+          ),
+          SliverToBoxAdapter(child: ProfileHook()),
+        ],
+      );
+    } else {
+      return CustomScrollView(
+        slivers: <Widget>[
+          SliverAppBar(
+            title: Text('Login'),
+          ),
+          SliverFillRemaining(
+            child: MainScreen(),
+          ),
+        ],
+      );
+    }
   }
 
   @override
@@ -33,71 +58,93 @@ class _ProfileScreenState extends State<ProfileScreen>
 class ProfileHook extends HookWidget {
   @override
   Widget build(BuildContext context) {
-    final snap = useQuery(QueryOptions(
-      documentNode: gql("""
-        query {
-          me {
-            username
-            email
-          }
-        }
-      """),
-    ));
-
-    if (snap.data == null) {
-      return Center(child: CircularProgressIndicator());
-    }
-    if (snap.data.hasException) {
-      return Text("Error");
-    }
-    final Map<String, dynamic> user = snap.data.data['me'];
+    final snap = useProvider(userProvider);
+    final ipData = useProvider(ipDataProvider);
 
     return Column(
       children: <Widget>[
-        Text(
-          '@${user["username"]}',
-          style: context.theme.textTheme.headline5,
-        ),
-        Text(
-          user["email"],
-          style: context.theme.textTheme.headline6,
-        ),
-        FutureBuilder<Map<String, dynamic>>(
-          future: LocationService.getIpInfo(),
-          builder: (context, snapshot) {
-            if (snapshot.data == null) {
-              return Center(
-                child: CircularProgressIndicator(),
-              );
+        snap.when(
+          data: (data) {
+            if (data == null) {
+              return Center(child: CircularProgressIndicator());
             }
+            return Column(
+              children: [
+                Row(
+                  children: [
+                    if (data.firstname != null)
+                      Text(
+                        data.firstname ?? '',
+                        style: context.theme.textTheme.headline5,
+                      ),
+                    if (data.lastname != null)
+                      Text(
+                        data.lastname ?? '',
+                        style: context.theme.textTheme.headline5,
+                      ),
+                  ],
+                ),
+                Text(
+                  '@${data.username}',
+                  style: context.theme.textTheme.headline5,
+                ),
+                Text(
+                  data.email,
+                  style: context.theme.textTheme.headline6,
+                ),
+              ],
+            );
+          },
+          loading: () {
+            return Center(
+              child: CircularProgressIndicator(),
+            );
+          },
+          error: (e, _) {
+            return Text(e.toString());
+          },
+        ),
+        ipData.when(
+          data: (data) {
             return Padding(
               padding: const EdgeInsets.all(10.0),
-              child: Table(
-                children: [
-                  for (final entry in snapshot.data.entries)
-                    TableRow(children: [
-                      Text(entry.key),
-                      Text(entry.value.toString()),
-                    ]),
-                ],
-              ),
+              child: Text(data.ip),
             );
+          },
+          loading: () {
+            return Center(
+              child: CircularProgressIndicator(),
+            );
+          },
+          error: (e, _) {
+            return Text(e.toString());
           },
         ),
         Button(
           onTap: () async {
-            await context.i<AuthService>().logout();
-            final msg = Flushbar(
-              icon: Icon(
-                Icons.info_outline,
-                color: Colors.orangeAccent,
-              ),
-              margin: EdgeInsets.all(8),
-              duration: 2.seconds,
-              borderRadius: 8,
-              message: 'Logged',
+            final authService = context.read(authServiceProvider);
+            await authService.logout();
+
+            showFlash(
+              context: context,
+              duration: Duration(seconds: 3),
+              builder: (context, controller) {
+                return Flash(
+                  controller: controller,
+                  backgroundColor:
+                      context.theme.scaffoldBackgroundColor.lighten(),
+                  margin: EdgeInsets.all(18),
+                  borderRadius: BorderRadius.circular(10),
+                  child: FlashBar(
+                    icon: Icon(
+                      Icons.info_outline,
+                      color: Colors.orangeAccent,
+                    ),
+                    message: Text("Logged out"),
+                  ),
+                );
+              },
             );
-            await msg.show(context);
             context.navigateTo('/', clearStack: true);
           },
           width: context.media.size.width / 3,

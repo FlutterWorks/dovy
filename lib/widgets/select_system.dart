@@ -1,5 +1,5 @@
-import 'package:dovy/general.dart';
-import 'package:dovy/hooks/graphql.dart';
+import 'package:flutter/material.dart';
+import 'package:dovy/general.dart' hide Listener;
 
 class SelectSystem extends HookWidget {
   const SelectSystem({
@@ -8,72 +8,78 @@ class SelectSystem extends HookWidget {
 
   @override
   Widget build(BuildContext context) {
-    final systemSelectBloc = useBloc<SystemSelectCubit>();
+    final selectState = useProvider(selectProvider);
+    final lines = useProvider(linesProvider).data?.value ?? [];
+    final stations = useProvider(stationsProvider).data?.value ?? [];
 
-    return BlocBuilder<SystemsListCubit, List<dynamic>>(
-        builder: (context, systemsListState) {
-      return BlocBuilder<LinesListCubit, List<dynamic>>(
-          builder: (context, linesListState) {
-        return BlocBuilder<StationsListCubit, List<dynamic>>(
-            builder: (context, stationsListState) {
-          return BlocBuilder<SystemSelectCubit, SystemSelectState>(
-              builder: (context, systemSelectState) {
-            return Column(
-              children: <Widget>[
-                if (systemsListState.isNotEmpty)
-                  SearchableDropdown.single(
-                    value: systemSelectState.system,
-                    items: systemsListState
-                        .map(
-                          (system) => DropdownMenuItem(
-                            child: Text(system["name"]),
-                            value: system["id"],
-                          ),
-                        )
-                        .toList(),
-                    onChanged: systemSelectBloc.selectSystem,
-                    displayClearIcon: false,
-                    onClear: () => systemSelectBloc.selectSystem(null),
-                    hint: "System",
-                    searchHint: "Select a System",
-                  ),
-                if (linesListState.isNotEmpty)
-                  SearchableDropdown.single(
-                    value: systemSelectState.line,
-                    items: linesListState
-                        .map(
-                          (line) => DropdownMenuItem(
-                            child: Text(line["name"]),
-                            value: line["id"],
-                          ),
-                        )
-                        .toList(),
-                    onChanged: systemSelectBloc.selectLine,
-                    onClear: () => systemSelectBloc.selectLine(null),
-                    hint: "Line",
-                    searchHint: "Select a Line",
-                  ),
-                if (stationsListState.isNotEmpty)
-                  SearchableDropdown.single(
-                    value: systemSelectState.station,
-                    items: stationsListState
-                        .map(
-                          (line) => DropdownMenuItem(
-                            child: Text(line["name"]),
-                            value: line["id"],
-                          ),
-                        )
-                        .toList(),
-                    onChanged: systemSelectBloc.selectStation,
-                    onClear: () => systemSelectBloc.selectStation(null),
-                    hint: "Station",
-                    searchHint: "Select a Station",
-                  ),
-              ],
-            );
-          });
-        });
-      });
-    });
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        if (lines.isNotEmpty)
+          Material(
+            color: Colors.black12,
+            borderRadius: BorderRadius.circular(5),
+            child: ButtonTheme(
+              alignedDropdown: true,
+              child: DropdownButton(
+                isExpanded: true,
+                underline: DropdownButtonHideUnderline(child: Container()),
+                hint: Text("Select a line"),
+                value: selectState.state.line,
+                icon: IconButton(
+                  icon: Icon(Icons.clear),
+                  onPressed: () {
+                    selectState.state = selectState.state.setLine(null);
+                  },
+                ),
+                items: [
+                  for (final line in lines)
+                    DropdownMenuItem<String>(
+                      value: line.id,
+                      child: Text(line.name),
+                    )
+                ],
+                onChanged: (val) {
+                  selectState.state = selectState.state.setLine(val);
+                },
+              ),
+            ),
+          ),
+        SizedBox(
+          height: 10,
+        ),
+        if (stations.isNotEmpty && selectState.state.line != null)
+          Material(
+            color: Colors.black12,
+            borderRadius: BorderRadius.circular(5),
+            child: ButtonTheme(
+              alignedDropdown: true,
+              child: DropdownButton(
+                isExpanded: true,
+                underline: DropdownButtonHideUnderline(child: Container()),
+                hint: Text("Select a station"),
+                value: selectState.state.station,
+                icon: IconButton(
+                  icon: Icon(Icons.close),
+                  onPressed: () {
+                    selectState.state = selectState.state.setStation(null);
+                  },
+                ),
+                items: [
+                  for (final station in stations)
+                    DropdownMenuItem<String>(
+                      value: station.id,
+                      child: Text(station.name),
+                    )
+                ],
+                onChanged: (val) {
+                  selectState.state = selectState.state.setStation(val);
+                },
+              ),
+            ),
+          ),
+      ],
+    );
   }
 }

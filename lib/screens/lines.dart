@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:dovy/general.dart';
 
 class LinesScreen extends StatefulHookWidget {
@@ -14,61 +16,72 @@ class _LinesScreenState extends State<LinesScreen>
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    return MapStateBuilder(
-        builder: (context, select, systemsList, lines, stationsList) {
-      final systems = mapKeysFromList(systemsList, (k) => k["id"]);
-      final system = systems[select.system];
-      final name = system["name"];
-      return CustomScrollView(
-        slivers: <Widget>[
-          SliverAppBar(
-            title: Text("$name - Lines"),
-            actions: <Widget>[
-              IconButton(
-                icon: Icon(Icons.settings),
-                onPressed: () {
-                  final message = Flushbar(
-                    title: "Options",
-                    messageText: SelectSystem(),
-                    margin: EdgeInsets.all(10),
-                    borderRadius: 20,
-                  );
-                  context.show(message);
-                },
-              )
-            ],
-          ),
-          SliverPadding(
-            padding: EdgeInsets.all(20),
-            sliver: buildGridView(lines), // TODO: Change
-          )
-        ],
+
+    final select = useProvider(selectProvider).state;
+    final systemsList = useProvider(systemsProvider)?.data?.value ?? [];
+    final lines = useProvider(linesProvider)?.data?.value ?? [];
+
+    if (systemsList == null || lines == null) {
+      return Center(
+        child: SpinKitFadingFour(
+          color: Colors.white,
+        ),
       );
-    });
+    }
+
+    final systems = mapKeysFromList(systemsList, (System k) => k.id);
+    final system = systems[select.system];
+    final name = system?.name;
+
+    return CustomScrollView(
+      slivers: <Widget>[
+        SliverAppBar(
+          title: Text("$name - Lines"),
+          actions: <Widget>[],
+        ),
+        SliverPadding(
+          padding: EdgeInsets.all(20),
+          sliver: buildGridView(lines),
+        )
+      ],
+    );
   }
 
-  SliverGrid buildGridView(List lines) {
+  SliverGrid buildGridView(List<Line> lines) {
     return SliverGrid(
-      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        mainAxisSpacing: 20,
-        crossAxisSpacing: 20,
-      ),
+      gridDelegate: kIsWeb
+          ? SliverGridDelegateWithMaxCrossAxisExtent(
+              maxCrossAxisExtent: 200,
+              mainAxisSpacing: 20,
+              crossAxisSpacing: 20,
+            )
+          : SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              mainAxisSpacing: 20,
+              crossAxisSpacing: 20,
+            ),
       delegate: SliverChildBuilderDelegate(
         (context, i) {
           final line = lines[i];
-          final color =
-              (line["color"] as String).toColor().desaturate().lighten();
+          final color = getColor(line.color).desaturate().lighten();
           return Material(
             color: color,
-            borderRadius: BorderRadius.all(Radius.circular(10)),
-            child: Center(
-              child: Text(
-                line["name"],
-                style: context.theme.textTheme.headline4.copyWith(
-                  color: color.inverseBW,
+            borderRadius: BorderRadius.circular(10),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(10),
+              onTap: () {
+                context.navigateTo(
+                  '/line/${line.id}',
+                );
+              },
+              child: Center(
+                child: Text(
+                  line.name,
+                  style: context.theme.textTheme.headline4.copyWith(
+                    color: color.inverseBW,
+                  ),
+                  textAlign: TextAlign.center,
                 ),
-                textAlign: TextAlign.center,
               ),
             ),
           );
